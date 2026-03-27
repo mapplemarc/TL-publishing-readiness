@@ -13,6 +13,7 @@ import { CheckCircle2, AlertTriangle, XCircle, RefreshCcw, Loader2, BookOpen, Fi
 import { GoogleGenAI, Type } from '@google/genai';
 import * as mammoth from 'mammoth';
 import html2pdf from 'html2pdf.js';
+import ReactMarkdown from 'react-markdown';
 
 const CircularProgress = ({ value, max = 5, size = 100, strokeWidth = 10 }: { value: number, max?: number, size?: number, strokeWidth?: number }) => {
   const radius = (size - strokeWidth) / 2;
@@ -244,7 +245,7 @@ CRITICAL SCORING INSTRUCTIONS (BE HARSH):
 CRITICAL INSTRUCTION FOR DIFFERENTIATION:
 You MUST use the Google Search tool to search the live web for recent publications on this topic. Even if the user has provided specific competitive pieces, you MUST STILL conduct a WIDE and comprehensive search across major consulting firms (e.g., McKinsey, BCG, Bain, Deloitte), boutique consultancies, industry publications, think tanks, and leading technology companies. Compare the uploaded draft against BOTH these live search results AND the user-provided competitive pieces. 
 - STRICT TIME CONSTRAINT: You MUST NOT review, reference, or include ANY competitive pieces that were originally published more than 12 months ago, UNLESS the piece has been explicitly updated within the last 12 months. Before including any competitive piece, verify its publication or last updated date. If it is older than 12 months and has not been updated, EXCLUDE IT completely.
-- Pay close attention to the SPECIFIC ANGLE or TAKE, not just the broad topic. It is expected that competitors write about the same broad topics. What matters is whether this draft's specific perspective, solution, or insight is unique.
+- EVALUATE SATURATION IN BOTH TOPIC AND ANGLE: You must evaluate saturation in BOTH the broad topic AND the specific angle within it. While consideration for overall topic saturation is important (e.g., "AI in Healthcare" is highly saturated), the SPECIFIC ANGLE is of higher importance for differentiation. It is expected that many companies will cover the same broad topics; what matters most is whether this draft's specific perspective, solution, or insight cuts through the noise.
 - If competitors have published the EXACT SAME specific take or angle within the last 12 months, the Differentiation score MUST be 3 or lower. Cite the competitors in your rationale.
 - Award a 4 or 5 if the specific angle, framework, or insight is genuinely unique and unaddressed by the search results, even if the broad topic itself is highly crowded.
 
@@ -253,6 +254,8 @@ Your feedback MUST match the depth, analytical rigor, and specific style of Sour
 - Do not give generic advice like "add more data" or "improve the structure." 
 - Instead, provide highly specific, nuanced critiques. For example: "The lack of a consistently clear structure in report materials emerged as a notable weakness... there is evidence of strong practice that could be replicated." or "Recommendations are often linked to ways in which the firm can help. This would be excusable were the underlying analysis stronger and more compelling. Instead, this heavy-handed approach is off-putting."
 - Point out specific strengths and exact areas where the execution falls short (e.g., 'heavy-handed sales approach', 'lack of clear methodology', 'fizzles out with little or no actionable guidance', 'sharpness is compromised by a lack of clarity on who it is for').
+- EXAMPLES ARE MANDATORY: When providing a recommendation for improvement in ANY of the detailed sections, you MUST include specific examples from competitive reports that show how others are doing it specifically. You MUST format the reference as a Markdown link, hyperlinking the competitor's name or the report's title directly to the valid URL (e.g., "[McKinsey's State of AI](https://...) does this by...").
+- IF NO COMPETITIVE EXAMPLE EXISTS: You must make up a specific, concrete example using the uploaded content as a base to show exactly how the improvement could work in practice. If you do this, you MUST explicitly state "this is just an example".
 - Be direct, professional, and constructive, maintaining your persona as the HBR Editor in Chief.
 
 For each question ID in the rubric, provide:
@@ -318,13 +321,28 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
 
       if (response.text) {
         let rawText = response.text.trim();
-        if (rawText.startsWith('```json')) {
-          rawText = rawText.replace(/^```json\n/, '').replace(/\n```$/, '');
-        } else if (rawText.startsWith('```')) {
-          rawText = rawText.replace(/^```\n/, '').replace(/\n```$/, '');
+        
+        // Try to extract JSON block if it's wrapped in markdown
+        const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          rawText = jsonMatch[1].trim();
+        } else {
+          // Fallback: try to find the first { and last }
+          const firstBrace = rawText.indexOf('{');
+          const lastBrace = rawText.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            rawText = rawText.substring(firstBrace, lastBrace + 1);
+          }
         }
         
-        const resultData = JSON.parse(rawText);
+        let resultData;
+        try {
+          resultData = JSON.parse(rawText);
+        } catch (parseError) {
+          console.error("JSON Parse Error. Raw text was:", response.text);
+          throw new Error("The AI returned an invalid response format. Please try again.");
+        }
+        
         const results = resultData.evaluations;
         const newScores: Record<string, ScoreValue> = {};
         const newFeedback: Record<string, string> = {};
@@ -638,7 +656,15 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
                           <div className="flex items-start gap-4">
                             <div className="flex-1">
                               <p className="font-bold text-primary mb-2 text-base">Editor's Rationale:</p>
-                              <p className="whitespace-pre-wrap leading-relaxed">{rec.recommendation}</p>
+                              <div className="whitespace-pre-wrap leading-relaxed space-y-2">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium" />
+                                  }}
+                                >
+                                  {rec.recommendation}
+                                </ReactMarkdown>
+                              </div>
                             </div>
                           </div>
                         </AccordionContent>
@@ -666,7 +692,15 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
                           <div className="flex items-start gap-4">
                             <div className="flex-1">
                               <p className="font-bold text-primary mb-2 text-base">Editor's Rationale:</p>
-                              <p className="whitespace-pre-wrap leading-relaxed">{rec.recommendation}</p>
+                              <div className="whitespace-pre-wrap leading-relaxed space-y-2">
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium" />
+                                  }}
+                                >
+                                  {rec.recommendation}
+                                </ReactMarkdown>
+                              </div>
                             </div>
                           </div>
                         </AccordionContent>
