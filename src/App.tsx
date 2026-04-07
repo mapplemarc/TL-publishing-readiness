@@ -241,7 +241,7 @@ export default function App() {
     setIsAnalyzing(true);
     try {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not defined in the environment.");
+        throw new Error("GEMINI_API_KEY is not defined in the environment. If you are deploying this app, make sure to add GEMINI_API_KEY to your hosting provider's Environment Variables (e.g., Vercel, Netlify) and trigger a new build.");
       }
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
