@@ -102,9 +102,18 @@ export default function App() {
     }
   }, []);
 
+  const MAX_FILE_SIZE_MB = 100;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert(`File "${file.name}" is too large. Please upload a file smaller than ${MAX_FILE_SIZE_MB}MB.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     setIsExtracting(true);
     try {
@@ -153,12 +162,26 @@ export default function App() {
   };
 
   const handleCompFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
+    const files = Array.from(event.target.files || []) as File[];
     if (!files.length) return;
+
+    const validFiles: File[] = [];
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`File "${file.name}" is too large. Please upload a file smaller than ${MAX_FILE_SIZE_MB}MB.`);
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    if (!validFiles.length) {
+      if (compFileInputRef.current) compFileInputRef.current.value = '';
+      return;
+    }
 
     setIsExtracting(true);
     try {
-      for (const file of files) {
+      for (const file of validFiles) {
         if (file.type === 'application/pdf') {
           const base64String = await new Promise<string>((resolve) => {
             const reader = new FileReader();
@@ -200,6 +223,21 @@ export default function App() {
   const analyzeContent = async () => {
     if (!content.trim() && !attachedPdf) return;
     
+    // Check total payload size to avoid Gemini API 50MB limit
+    let totalBase64Size = 0;
+    if (attachedPdf) {
+      totalBase64Size += attachedPdf.data.length;
+    }
+    competitivePdfs.forEach(pdf => {
+      totalBase64Size += pdf.data.length;
+    });
+    
+    // 50MB base64 length limit (leaves room for text and JSON overhead)
+    if (totalBase64Size > 50000000) {
+      alert("The total size of attached PDFs exceeds the AI's 50MB processing limit. While you can upload files up to 100MB (like Word docs or text files where we only extract the text), PDFs are sent directly to the AI as images and have a stricter combined limit. Please remove some competitive PDFs or use smaller files.");
+      return;
+    }
+
     setIsAnalyzing(true);
     try {
       if (!process.env.GEMINI_API_KEY) {
@@ -224,7 +262,10 @@ Here is the scoring rubric (1-5 scale for each question):
 ${rubricText}
 
 ${content.trim() ? `Draft Content / Additional Context:\n"""\n${content}\n"""` : ''}
-${attachedPdf ? `\n(A PDF document is also attached to this request. Please evaluate its contents.)` : ''}
+${attachedPdf ? `\n(A PDF document is also attached to this request. Please evaluate its contents.)` : `
+CRITICAL INSTRUCTION FOR DRAFT CONTENT (NO VISUALS):
+Since the user has provided draft content without a packaged PDF, you MUST skip the evaluation for the question "Does it look good and maintain visual consistency throughout the report?" (Question ID: app_2).
+Do NOT include "app_2" in your JSON evaluations array. Instead, explicitly state in your summary that you have ignored visual consistency because the content is in draft form.`}
 
 ${competitiveUrls.trim() || competitivePdfs.length > 0 || competitiveTexts.length > 0 ? `
 USER-PROVIDED COMPETITIVE PIECES FOR DIRECT COMPARISON:
@@ -473,8 +514,9 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
 
     let total = 0;
     const catScores = categories.map((cat) => {
-      const catTotal = cat.questions.reduce((sum, q) => sum + (scores[q.id] || 0), 0);
-      const catAvg = catTotal / cat.questions.length;
+      const answeredQuestions = cat.questions.filter(q => scores[q.id] !== undefined);
+      const catTotal = answeredQuestions.reduce((sum, q) => sum + (scores[q.id] || 0), 0);
+      const catAvg = answeredQuestions.length > 0 ? catTotal / answeredQuestions.length : 0;
       total += catAvg;
       return { ...cat, average: catAvg };
     });
@@ -496,7 +538,7 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
 
     const recs = categories.flatMap((cat) =>
       cat.questions
-        .filter((q) => (scores[q.id] || 0) < 5) // Show recommendations for anything less than perfect
+        .filter((q) => scores[q.id] !== undefined && (scores[q.id] || 0) < 5) // Show recommendations for anything less than perfect
         .map((q) => ({
           category: cat.title,
           question: q.text,
@@ -795,6 +837,7 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-secondary/50 p-4 rounded-xl border border-border">
                     <Label htmlFor="content" className="text-sm font-semibold text-primary">
                       Upload a document for analysis
+                      <span className="block text-xs font-normal text-muted-foreground mt-1">Max 100MB per file (PDFs have a stricter 50MB combined limit)</span>
                     </Label>
                     <div>
                       <input 
@@ -854,6 +897,7 @@ You MUST return your entire response as a single, valid JSON object. Do not incl
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-secondary/50 p-4 rounded-xl border border-border mb-4">
                         <Label className="text-sm font-semibold text-primary">
                           Upload competitive documents
+                          <span className="block text-xs font-normal text-muted-foreground mt-1">Max 100MB per file (PDFs have a stricter 50MB combined limit)</span>
                         </Label>
                         <div>
                           <input 
