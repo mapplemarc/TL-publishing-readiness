@@ -1,5 +1,5 @@
 {
-  "name": "TL Publishing Readiness",
+  "name": "TL Publishing Readiness Assessment",
   "description": "Evaluates content quality based on the Source Global Whitespace methodology, providing a score, ready to publish status, and actionable recommendations to improve.",
   "requestFramePermissions": []
 }
